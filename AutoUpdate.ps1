@@ -118,7 +118,7 @@ Write-Host -ForegroundColor Green "Got advertisement. Contacting server at $($co
 
 $configResponse = $null;
 try {
-  $configResponse = (Invoke-WebRequest -Uri $contactUri).Content
+  $configResponse = (Invoke-WebRequest -Uri $contactUri -UseBasicParsing).Content
 }
 catch {
   Write-Host -ForegroundColor Red "There was an error contacting the server."
