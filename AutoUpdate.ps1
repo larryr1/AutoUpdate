@@ -19,11 +19,12 @@ function Configure-AutoLogon {
   Set-ItemProperty $RegistryPath 'AutoLogonCount' -Value $Uses -type String -Force
   Set-ItemProperty $RegistryPath 'DefaultUsername' -Value "$Username" -type String -Force
   Set-ItemProperty $RegistryPath 'DefaultPassword' -Value "$Password" -type String -Force
+  Set-ItemProperty $RegistryPath 'LastUsedUsername' -Value "$Username" -type String -Force
   
 }
 
 function Continuity-Restart {
-  Configure-AutoLogon -Username "au" -Passsword "student" -Users 1
+  Configure-AutoLogon -Username config.logon.continuity.username -Passsword config.logon.continuity.password -Uses 1
   Restart-System
 }
 
@@ -134,9 +135,13 @@ Write-Host -ForegroundColor Green "Received config from the server."
 Write-Host -ForegroundColor DarkGreen $configResponse
 $config = ($configResponse | ConvertFrom-Json)
 
-Write-Host -ForegroundColor Yellow "Getting available updates."
+Write-Host -ForegroundColor Yellow "Getting available updates. Computer may restart automatically."
+Write-Host -ForegroundColor Yellow "Configured autologon for user $($config.logon.continuity.username)"
+Configure-AutoLogon -Username config.logon.continuity.username -Passsword config.logon.continuity.password -Uses 1
+RestartRequired-Checkpoint
+Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot
 
-foreach ($update in $availableUpdates) {
+<# foreach ($update in $availableUpdates) {
 
   # Make sure no restarts are pending
   RestartRequired-Checkpoint
@@ -157,9 +162,9 @@ foreach ($update in $availableUpdates) {
   Write-Host -ForegroundColor Yellow "   - Installing update."
   Get-WindowsUpdate -Install -MicrosoftUpdate -AcceptAll -UpdateID $update.Identity().UpdateID()
   Write-Host -ForegroundColor DarkGreen "   - Installation complete."
-}
+} #>
 
-Write-Host -ForegroundColor Green "Installed all updates."
+Write-Host -ForegroundColor Green "Finished update installation."
 
 RestartRequired-Checkpoint
 
