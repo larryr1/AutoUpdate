@@ -1,0 +1,12 @@
+{
+  "logon": {
+    "completion": {
+      "username": "user@domain",
+      "password": "password"
+    },
+    "continuity": {
+      "username": "user@domain",
+      "password": "password"
+    }
+  }
+}
