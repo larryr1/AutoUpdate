@@ -74,6 +74,9 @@ function Delete-RegistryKeys {
   }
 }
 
+Write-Host Installing required modules...
+Set-PSRepository PSGallery -InstallationPolicy Trusted
+Install-Module SQLServer -Confirm:$False -Force
 
 Clear-Host
 Write-Host "Automatic Windows Update"
