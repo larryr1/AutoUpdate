@@ -24,7 +24,7 @@ function Configure-AutoLogon {
 }
 
 function Continuity-Restart {
-  Configure-AutoLogon -Username config.logon.continuity.username -Passsword config.logon.continuity.password -Uses 1
+  Configure-AutoLogon -Username $config.logon.continuity.username -Passsword $config.logon.continuity.password -Uses 1
   Restart-System
 }
 
