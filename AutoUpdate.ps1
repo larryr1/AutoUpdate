@@ -1,5 +1,9 @@
 ﻿#Requires -RunAsAdministrator
 
+param (
+  [bool]$LockOnComplete = $False
+ )
+
 $isElevated = (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if ($isElevated -eq $false) {
   Write-Host -ForegroundColor Red "This script must be running with elevated privileges to continue."
@@ -22,6 +26,23 @@ function Configure-AutoLogon {
   Set-ItemProperty $RegistryPath 'LastUsedUsername' -Value "$Username" -type String -Force
   
 }
+
+function Remove-AutoLogon {
+  $RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+  Set-ItemProperty $RegistryPath 'AutoAdminLogon' -Value "0" -Type String -Force
+  Set-ItemProperty $RegistryPath 'AutoLogonCount' -Value "0" -type String -Force
+  Set-ItemProperty $RegistryPath 'DefaultUsername' -Value "" -type String -Force
+  Set-ItemProperty $RegistryPath 'DefaultPassword' -Value "" -type String -Force
+  Set-ItemProperty $RegistryPath 'LastUsedUsername' -Value "" -type String -Force
+}
+
+function Set-LastUsedUsername {
+  Param([string]$Username)
+  $RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+  Set-ItemProperty $RegistryPath 'LastUsedUsername' -Value $Username -Type String -Force
+  Set-ItemProperty $RegistryPath 'DefaultUsername' -Value $Username -Type String -Force
+}
+
 
 function Continuity-Restart {
   Configure-AutoLogon -Username $config.logon.continuity.username -Passsword $config.logon.continuity.password -Uses 1
@@ -53,8 +74,7 @@ function Completion-Restart {
 function Create-RegistryKeys {
   $KeyPath = "HKLM:\SOFTWARE\larryr1\AutoUpdate"  
   $ValueName = "PostUpdateCheck"  
-  $ValueData = "0
-  "  
+  $ValueData = "0"  
   try {  
       Get-ItemProperty -Path $KeyPath -Name $valueName -ErrorAction Stop | Out-Null
   }  
@@ -175,10 +195,22 @@ RestartRequired-Checkpoint
 Create-RegistryKeys
 
 $postUpdateCheck = Get-ItemProperty -Path "HKLM:\SOFTWARE\larryr1\AutoUpdate\" -Name "PostUpdateCheck"
+
 if ($postUpdateCheck -eq "1") {
   Delete-RegistryKeys
-  Write-Host -ForegroundColor Green "Updates are complete. Restarting to log in to pre-configured completion account ($($config.logon.completion.username))."
-  Completion-Restart
+
+  if ($LockOnComplete = $True) {
+    Write-Host -ForegroundColor Green "Updates are complete. Restarting to lock screen."
+    Remove-AutoLogon
+    Set-LastUsedUsername -Username "Updates complete."
+    Restart-System
+    exit
+    
+  } else {
+    Write-Host -ForegroundColor Green "Updates are complete. Restarting to log in to pre-configured completion account ($($config.logon.completion.username))."
+    Completion-Restart
+  }
+  
 } else {
   Set-ItemProperty -Path "HKLM:\SOFTWARE\larryr1\AutoUpdate\" -Name "PostUpdateCheck" -Value "1" -Force
   Write-Host -ForegroundColor Green "Updates are almost complete. Restarting to check for any final updates. (Using account $($config.logon.continuity.username).)"
