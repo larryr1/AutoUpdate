@@ -2,6 +2,9 @@
 
 param (
   [bool]$LockOnComplete = $False
+  [bool]$Offline = $False
+  [string]$ContinuityUsername = ""
+  [string]$ContinuityPassword = ""
  )
 
 $isElevated = (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -35,14 +38,6 @@ function Remove-AutoLogon {
   Set-ItemProperty $RegistryPath 'DefaultPassword' -Value "" -type String -Force
   Set-ItemProperty $RegistryPath 'LastUsedUsername' -Value "" -type String -Force
 }
-
-function Set-LastUsedUsername {
-  Param([string]$Username)
-  $RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
-  Set-ItemProperty $RegistryPath 'LastUsedUsername' -Value $Username -Type String -Force
-  Set-ItemProperty $RegistryPath 'DefaultUsername' -Value $Username -Type String -Force
-}
-
 
 function Continuity-Restart {
   Configure-AutoLogon -Username $config.logon.continuity.username -Passsword $config.logon.continuity.password -Uses 1
@@ -88,15 +83,55 @@ function Create-RegistryKeys {
 }
 
 function Delete-RegistryKeys {
-  $KeyPath = "HKLM:\SOFTWARE\larryr1\"
+  $KeyPath = "HKLM:\SOFTWARE\larryr1\AutoUpdate\"
   if (Test-Path -Path $KeyPath) {
     Remove-Item -Path $KeyPath -Recurse
   }
 }
 
+function Set-WallpaperStatus {
+  
+  $videoSettings = (Get-WmiObject Win32_VideoController | Select CurrentHorizontalResolution, CurrentVerticalResolution)
+
+  $filename = $env:TEMP + [guid]::NewGuid() + ".bmp"
+  $bmp = new-object System.Drawing.Bitmap ([int]$videoSettings.CurrentHorizontalResolution),([int]$videoSettings.CurrentVerticalResolution)
+  
+  # Text font
+  $font = new-object System.Drawing.Font Consolas,24
+  $font2 = new-object System.Drawing.Font Consolas,18
+  $bgBrush = [System.Drawing.Brushes]::LightGreen 
+  $fgBrush = [System.Drawing.Brushes]::Black
+  
+  # Calc text position
+  $message = "Updates complete on " + (Get-Date -Format "dddd MM/dd/yyyy HH:mm K" )
+  $message2 = "A machine restart is suggested."
+  
+  $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+  $graphics.FillRectangle($bgBrush, 0, 0, $bmp.Width, $bmp.Height)
+  
+  $textSize = $graphics.MeasureString($message, $font)
+  $text2Size = $graphics.MeasureString($message2, $font2)
+  
+  $mWidth = [math]::Floor(([int]$videoSettings.CurrentHorizontalResolution - $textSize.Width) / 2)
+  $m2Width = [math]::Floor(([int]$videoSettings.CurrentHorizontalResolution - $text2Size.Width) / 2)
+  
+  $graphics.DrawString($message, $font, $fgBrush, $mWidth, 100)
+  $graphics.DrawString($message2, $font2, $fgBrush, $m2Width, 150)
+  $graphics.Dispose()
+  
+  # Save
+  $bmp.Save($filename) 
+  
+  # Write Registry Key, will revert to school image via GP on reboot.
+  Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\Personalization\" -Name "LockScreenImage" -Value $filename
+}
+
 Write-Host Installing required modules...
 Set-PSRepository PSGallery -InstallationPolicy Trusted
-Install-Module SQLServer -Confirm:$False -Force
+Install-Module PSWindowsUpdate -Confirm:$False -Force
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
 Clear-Host
 Write-Host "Automatic Windows Update"
@@ -202,12 +237,13 @@ if ($postUpdateCheck -eq "1") {
   if ($LockOnComplete = $True) {
     Write-Host -ForegroundColor Green "Updates are complete. Restarting to lock screen."
     Remove-AutoLogon
-    Set-LastUsedUsername -Username "Updates complete."
+    Set-WallpaperStatus
     Restart-System
     exit
     
   } else {
     Write-Host -ForegroundColor Green "Updates are complete. Restarting to log in to pre-configured completion account ($($config.logon.completion.username))."
+    Set-WallpaperStatus
     Completion-Restart
   }
   
