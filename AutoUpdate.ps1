@@ -1,11 +1,4 @@
-﻿#Requires -RunAsAdministrator
-
-param (
-  [bool]$LockOnComplete = $False
-  [bool]$Offline = $False
-  [string]$ContinuityUsername = ""
-  [string]$ContinuityPassword = ""
- )
+#Requires -RunAsAdministrator
 
 $isElevated = (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if ($isElevated -eq $false) {
@@ -127,9 +120,14 @@ function Set-WallpaperStatus {
 }
 
 Write-Host Installing required modules...
+
+Write-Host Trusting repository PSGallery.
 Set-PSRepository PSGallery -InstallationPolicy Trusted
+
+Write-Host Installing module PSWindowsUpdate...
 Install-Module PSWindowsUpdate -Confirm:$False -Force
 
+Write-Host Loading .NET assemblies System.Windows.Forms and System.Drawing...
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
@@ -234,17 +232,19 @@ $postUpdateCheck = Get-ItemProperty -Path "HKLM:\SOFTWARE\larryr1\AutoUpdate\" -
 if ($postUpdateCheck -eq "1") {
   Delete-RegistryKeys
 
-  if ($LockOnComplete = $True) {
+  if ($config.enableCompletionLogon -eq $True) {
+
+    Write-Host -ForegroundColor Green "Updates are complete. Restarting to log in to pre-configured completion account ($($config.logon.completion.username))."
+    Set-WallpaperStatus
+    Completion-Restart
+    
+  } else {
+    
     Write-Host -ForegroundColor Green "Updates are complete. Restarting to lock screen."
     Remove-AutoLogon
     Set-WallpaperStatus
     Restart-System
     exit
-    
-  } else {
-    Write-Host -ForegroundColor Green "Updates are complete. Restarting to log in to pre-configured completion account ($($config.logon.completion.username))."
-    Set-WallpaperStatus
-    Completion-Restart
   }
   
 } else {
