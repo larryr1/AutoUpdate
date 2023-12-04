@@ -1,4 +1,5 @@
 {
+  "enableCompletionLogon": false
   "logon": {
     "completion": {
       "username": "user@domain",
