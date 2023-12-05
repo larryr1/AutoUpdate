@@ -12,13 +12,14 @@ if ($isElevated -eq $false) {
 
 function Configure-AutoLogon {
 
-  Param([string]$Username, [string]$Password, [string]$Uses = 1)
+  Param([string]$Username, [string]$Password, [string]$Domain = "", [string]$Uses = 1)
 
   $RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
   Set-ItemProperty $RegistryPath 'AutoAdminLogon' -Value "1" -Type String -Force
   Set-ItemProperty $RegistryPath 'AutoLogonCount' -Value $Uses -type String -Force
   Set-ItemProperty $RegistryPath 'DefaultUsername' -Value "$Username" -type String -Force
   Set-ItemProperty $RegistryPath 'DefaultPassword' -Value "$Password" -type String -Force
+  Set-ItemProperty $RegistryPath 'DefaultDomainName' -Value "$Domain" -type String -Force
   Set-ItemProperty $RegistryPath 'LastUsedUsername' -Value "$Username" -type String -Force
   
 }
@@ -29,11 +30,12 @@ function Remove-AutoLogon {
   Set-ItemProperty $RegistryPath 'AutoLogonCount' -Value "0" -type String -Force
   Set-ItemProperty $RegistryPath 'DefaultUsername' -Value "" -type String -Force
   Set-ItemProperty $RegistryPath 'DefaultPassword' -Value "" -type String -Force
+  Set-ItemProperty $RegistryPath 'DefaultDomainName' -Value "" -type String -Force
   Set-ItemProperty $RegistryPath 'LastUsedUsername' -Value "" -type String -Force
 }
 
 function Continuity-Restart {
-  Configure-AutoLogon -Username $config.logon.continuity.username -Passsword $config.logon.continuity.password -Uses 1
+  Configure-AutoLogon -Username $config.logon.continuity.username -Passsword $config.logon.continuity.password -Domain $config.logon.continuity.domain -Uses 1
   Restart-System
 }
 
@@ -51,12 +53,16 @@ function RestartRequired-Checkpoint {
 }
 
 function Restart-System {
-  Start-Process -FilePath "shutdown.exe" -ArgumentList '/r /f /t 10 /c "The system is restarting in 10 seconds for planned updates.'
+  Start-Process -FilePath "shutdown.exe" -ArgumentList '/r /f /t 10 /c "The system is restarting in 10 seconds for planned updates."'
 }
 
 function Completion-Restart {
-  Configure-AutoLogin -Username $config.logon.completion.username -Password $config.logon.completion.password -Users 1
+  Configure-AutoLogin -Username $config.logon.completion.username -Password $config.logon.completion.password -Domain $config.logon.completion.domain -Users 1
   Restart-System
+}
+
+function Log-Off {
+  Start-Process -FilePath "shutdown.exe" -ArgumentList '/f /l'
 }
 
 function Create-RegistryKeys {
@@ -87,7 +93,7 @@ function Set-WallpaperStatus {
   $videoSettings = (Get-WmiObject Win32_VideoController | Select CurrentHorizontalResolution, CurrentVerticalResolution)
 
   $filename = $env:TEMP + [guid]::NewGuid() + ".bmp"
-  $bmp = new-object System.Drawing.Bitmap ([int]$videoSettings.CurrentHorizontalResolution),([int]$videoSettings.CurrentVerticalResolution)
+  $bmp = new-object System.Drawing.Bitmap ([int]$videoSettings.CurrentHorizontalResolution[1]),([int]$videoSettings.CurrentVerticalResolution[1])
   
   # Text font
   $font = new-object System.Drawing.Font Consolas,24
@@ -105,8 +111,8 @@ function Set-WallpaperStatus {
   $textSize = $graphics.MeasureString($message, $font)
   $text2Size = $graphics.MeasureString($message2, $font2)
   
-  $mWidth = [math]::Floor(([int]$videoSettings.CurrentHorizontalResolution - $textSize.Width) / 2)
-  $m2Width = [math]::Floor(([int]$videoSettings.CurrentHorizontalResolution - $text2Size.Width) / 2)
+  $mWidth = [math]::Floor(([int]$videoSettings.CurrentHorizontalResolution[1] - $textSize.Width) / 2)
+  $m2Width = [math]::Floor(([int]$videoSettings.CurrentHorizontalResolution[1] - $text2Size.Width) / 2)
   
   $graphics.DrawString($message, $font, $fgBrush, $mWidth, 100)
   $graphics.DrawString($message2, $font2, $fgBrush, $m2Width, 150)
@@ -119,9 +125,12 @@ function Set-WallpaperStatus {
   Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\Personalization\" -Name "LockScreenImage" -Value $filename
 }
 
+Write-Host Ensuring NuGet is up to date...
+Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+
 Write-Host Installing required modules...
 
-Write-Host Trusting repository PSGallery.
+Write-Host Trusting repository PSGallery...
 Set-PSRepository PSGallery -InstallationPolicy Trusted
 
 Write-Host Installing module PSWindowsUpdate...
@@ -191,11 +200,13 @@ Write-Host -ForegroundColor Green "Received config from the server."
 Write-Host -ForegroundColor DarkGreen $configResponse
 $config = ($configResponse | ConvertFrom-Json)
 
-Write-Host -ForegroundColor Yellow "Getting available updates. Computer may restart automatically."
+Write-Host -ForegroundColor Yellow "Starting update process. Computer may restart automatically."
 Write-Host -ForegroundColor Yellow "Configured autologon for user $($config.logon.continuity.username)"
-Configure-AutoLogon -Username config.logon.continuity.username -Passsword config.logon.continuity.password -Uses 1
+Configure-AutoLogon -Username $config.logon.continuity.username -Passsword $config.logon.continuity.password -Domain $config.logon.continuity.domain -Uses 1
+Write-Host -ForegroundColor Yellow "Checking Windows Update reboot status."
+
 RestartRequired-Checkpoint
-Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot
+Install-WindowsUpdate -AcceptAll -AutoReboot -Download -Install
 
 <# foreach ($update in $availableUpdates) {
 
@@ -227,9 +238,9 @@ RestartRequired-Checkpoint
 # Post Update Check
 Create-RegistryKeys
 
-$postUpdateCheck = Get-ItemProperty -Path "HKLM:\SOFTWARE\larryr1\AutoUpdate\" -Name "PostUpdateCheck"
+$autoUpdateKey = Get-ItemProperty -Path "HKLM:\SOFTWARE\larryr1\AutoUpdate\"
 
-if ($postUpdateCheck -eq "1") {
+if ($autoUpdateKey.PostUpdateCheck -eq "1") {
   Delete-RegistryKeys
 
   if ($config.enableCompletionLogon -eq $True) {
@@ -240,10 +251,10 @@ if ($postUpdateCheck -eq "1") {
     
   } else {
     
-    Write-Host -ForegroundColor Green "Updates are complete. Restarting to lock screen."
+    Write-Host -ForegroundColor Green "Updates are complete. Signing out."
     Remove-AutoLogon
     Set-WallpaperStatus
-    Restart-System
+    Log-Off
     exit
   }
   
