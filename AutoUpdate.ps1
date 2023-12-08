@@ -59,11 +59,6 @@ function Restart-System {
   Start-Process -FilePath "shutdown.exe" -ArgumentList '/r /f /t 10 /c "The system is restarting in 10 seconds for planned updates."'
 }
 
-function Completion-Restart {
-  Configure-AutoLogin -Username $config.logon.completion.username -Password $config.logon.completion.password -Domain $config.logon.completion.domain -Users 1
-  Restart-System
-}
-
 function Log-Off {
   Start-Process -FilePath "shutdown.exe" -ArgumentList '/f /l'
 }
