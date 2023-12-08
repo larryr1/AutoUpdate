@@ -1,12 +1,15 @@
 {
+  "enableCompletionLogon": false
   "logon": {
     "completion": {
-      "username": "user@domain",
-      "password": "password"
+      "username": "user",
+      "password": "password",
+      "domain": "fqdn.local"
     },
     "continuity": {
-      "username": "user@domain",
-      "password": "password"
+      "username": "user",
+      "password": "password",
+      "domain": "fqdn.local"
     }
   }
 }

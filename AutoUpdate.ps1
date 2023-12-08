@@ -1,4 +1,7 @@
-﻿#Requires -RunAsAdministrator
+#Requires -RunAsAdministrator
+
+$registryKeyPath = "HKLM:\SOFTWARE\larryr1\AutoUpdate\"
+$legalKeyPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
 
 $isElevated = (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if ($isElevated -eq $false) {
@@ -12,19 +15,30 @@ if ($isElevated -eq $false) {
 
 function Configure-AutoLogon {
 
-  Param([string]$Username, [string]$Password, [string]$Uses = 1)
+  Param([string]$Username, [string]$Password, [string]$Domain = "", [string]$Uses = 1)
 
   $RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
   Set-ItemProperty $RegistryPath 'AutoAdminLogon' -Value "1" -Type String -Force
   Set-ItemProperty $RegistryPath 'AutoLogonCount' -Value $Uses -type String -Force
   Set-ItemProperty $RegistryPath 'DefaultUsername' -Value "$Username" -type String -Force
   Set-ItemProperty $RegistryPath 'DefaultPassword' -Value "$Password" -type String -Force
+  Set-ItemProperty $RegistryPath 'DefaultDomainName' -Value "$Domain" -type String -Force
   Set-ItemProperty $RegistryPath 'LastUsedUsername' -Value "$Username" -type String -Force
   
 }
 
+function Remove-AutoLogon {
+  $RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+  Set-ItemProperty $RegistryPath 'AutoAdminLogon' -Value "0" -Type String -Force
+  Set-ItemProperty $RegistryPath 'AutoLogonCount' -Value "0" -type String -Force
+  Set-ItemProperty $RegistryPath 'DefaultUsername' -Value "" -type String -Force
+  Set-ItemProperty $RegistryPath 'DefaultPassword' -Value "" -type String -Force
+  Set-ItemProperty $RegistryPath 'DefaultDomainName' -Value "" -type String -Force
+  Set-ItemProperty $RegistryPath 'LastUsedUsername' -Value "" -type String -Force
+}
+
 function Continuity-Restart {
-  Configure-AutoLogon -Username $config.logon.continuity.username -Passsword $config.logon.continuity.password -Uses 1
+  Configure-AutoLogon -Username $config.logon.continuity.username -Password $config.logon.continuity.password -Domain $config.logon.continuity.domain -Uses 1
   Restart-System
 }
 
@@ -42,41 +56,118 @@ function RestartRequired-Checkpoint {
 }
 
 function Restart-System {
-  Start-Process -FilePath "shutdown.exe" -ArgumentList '/r /f /t 10 /c "The system is restarting in 10 seconds for planned updates.'
+  Start-Process -FilePath "shutdown.exe" -ArgumentList '/r /f /t 10 /c "The system is restarting in 10 seconds for planned updates."'
 }
 
-function Completion-Restart {
-  Configure-AutoLogin -Username $config.logon.completion.username -Password $config.logon.completion.password -Users 1
-  Restart-System
+function Log-Off {
+  Start-Process -FilePath "shutdown.exe" -ArgumentList '/f /l'
 }
 
 function Create-RegistryKeys {
-  $KeyPath = "HKLM:\SOFTWARE\larryr1\AutoUpdate"  
-  $ValueName = "PostUpdateCheck"  
-  $ValueData = "0
-  "  
-  try {  
-      Get-ItemProperty -Path $KeyPath -Name $valueName -ErrorAction Stop | Out-Null
-  }  
-  catch [System.Management.Automation.ItemNotFoundException] {  
-      New-Item -Path $KeyPath -Force  
-      New-ItemProperty -Path $KeyPath -Name $ValueName -Value $ValueData -Force  
-  }  
-  catch {  
-      New-ItemProperty -Path $KeyPath -Name $ValueName -Value $ValueData -Type String -Force  
-  }  
+  New-Item -Path $registryKeyPath -ErrorAction Ignore
+  New-ItemProperty -Path $registryKeyPath -Name PostUpdateCheck -ErrorAction Ignore
+  New-ItemProperty -Path $registryKeyPath -Name StoredLegalCaption -ErrorAction Ignore
+  New-ItemProperty -Path $registryKeyPath -Name StoredLegalText -ErrorAction Ignore
+  New-ItemProperty -Path $registryKeyPath -Name LegalNoticeDisabled -ErrorAction Ignore
 }
 
 function Delete-RegistryKeys {
-  $KeyPath = "HKLM:\SOFTWARE\larryr1\"
-  if (Test-Path -Path $KeyPath) {
-    Remove-Item -Path $KeyPath -Recurse
+  if (Test-Path -Path $registryKeyPath) {
+    Remove-Item -Path $registryKeyPath -Recurse
   }
 }
 
+function Disable-AUP {
+    if ((Get-ItemProperty -Path $registryKeyPath -Name LegalNoticeDisabled -ErrorAction Stop).LegalNoticeDisabled -ne 1) {
+
+        # Get the system legal keys
+        $systemLegalCaption = (Get-ItemProperty -Path $legalKeyPath -Name legalnoticecaption -ErrorAction Stop).legalnoticecaption
+        $systemLegalText = (Get-ItemProperty -Path $legalKeyPath -Name legalnoticetext -ErrorAction Stop).legalnoticetext
+
+        # Set legal keys in program storage keys
+        New-ItemProperty -Path $registryKeyPath -Name "StoredLegalCaption" -Value $systemLegalCaption -Force
+        New-ItemProperty -Path $registryKeyPath -Name "StoredLegalText" -Value $systemLegalText -Force
+
+        # Delete system legal keys
+        Remove-ItemProperty -Path $legalKeyPath -Name legalnoticecaption -ErrorAction Stop -Force
+        Remove-ItemProperty -Path $legalKeyPath -Name legalnoticetext -ErrorAction Stop -Force
+
+        # Mark notice as disabled
+        Set-ItemProperty -Path $registryKeyPath -Name LegalNoticeDisabled -ErrorAction Stop -Value 1
+    }
+}
+
+function Enable-AUP {
+    if ((Get-ItemProperty -Path $registryKeyPath -Name LegalNoticeDisabled -ErrorAction Stop).LegalNoticeDisabled -eq "1") {
+
+        # Get the copy of system legal keys
+        $storedLegalCaption = (Get-ItemProperty -Path $registryKeyPath -Name "StoredLegalCaption" -ErrorAction Stop).StoredLegalCaption
+        $storedLegalText = (Get-ItemProperty -Path $registryKeyPath -Name "StoredLegalText" -ErrorAction Stop).StoredLegalText
+
+        # Set legal keys in system registry
+        New-ItemProperty -Path $legalKeyPath -Name "legalnoticecaption" -Value $storedLegalCaption -Force
+        New-ItemProperty -Path $legalKeyPath -Name "legalnoticetext" -Value $storedLegalText -Force
+
+        # Clear storage keys
+        Set-ItemProperty -Path $registryKeyPath -Name "StoredLegalCaption" -Value "" -Force
+        Set-ItemProperty -Path $registryKeyPath -Name "StoredLegalText" -Value "" -Force
+
+        # Mark notice as enabled
+        Set-ItemProperty -Path $registryKeyPath -Name LegalNoticeDisabled -ErrorAction Stop -Value 0
+    }
+}
+
+function Set-WallpaperStatus {
+  
+  $videoSettings = (Get-WmiObject Win32_VideoController | Select CurrentHorizontalResolution, CurrentVerticalResolution)
+
+  $filename = $env:TEMP + [guid]::NewGuid() + ".bmp"
+  $bmp = new-object System.Drawing.Bitmap ([int]$videoSettings.CurrentHorizontalResolution[1]),([int]$videoSettings.CurrentVerticalResolution[1])
+  
+  # Text font
+  $font = new-object System.Drawing.Font Consolas,24
+  $font2 = new-object System.Drawing.Font Consolas,18
+  $bgBrush = [System.Drawing.Brushes]::LightGreen 
+  $fgBrush = [System.Drawing.Brushes]::Black
+  
+  # Calc text position
+  $message = "Updates complete on " + (Get-Date -Format "dddd MM/dd/yyyy HH:mm K" )
+  $message2 = "A machine restart is suggested."
+  
+  $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+  $graphics.FillRectangle($bgBrush, 0, 0, $bmp.Width, $bmp.Height)
+  
+  $textSize = $graphics.MeasureString($message, $font)
+  $text2Size = $graphics.MeasureString($message2, $font2)
+  
+  $mWidth = [math]::Floor(([int]$videoSettings.CurrentHorizontalResolution[1] - $textSize.Width) / 2)
+  $m2Width = [math]::Floor(([int]$videoSettings.CurrentHorizontalResolution[1] - $text2Size.Width) / 2)
+  
+  $graphics.DrawString($message, $font, $fgBrush, $mWidth, 100)
+  $graphics.DrawString($message2, $font2, $fgBrush, $m2Width, 150)
+  $graphics.Dispose()
+  
+  # Save
+  $bmp.Save($filename) 
+  
+  # Write Registry Key, will revert to school image via GP on reboot.
+  Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\Personalization\" -Name "LockScreenImage" -Value $filename
+}
+
+Write-Host Ensuring NuGet is up to date...
+Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+
 Write-Host Installing required modules...
+
+Write-Host Trusting repository PSGallery...
 Set-PSRepository PSGallery -InstallationPolicy Trusted
-Install-Module SQLServer -Confirm:$False -Force
+
+Write-Host Installing module PSWindowsUpdate...
+Install-Module PSWindowsUpdate -Confirm:$False -Force
+
+Write-Host Loading .NET assemblies System.Windows.Forms and System.Drawing...
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
 Clear-Host
 Write-Host "Automatic Windows Update"
@@ -134,54 +225,42 @@ catch {
   exit
 }
 
-Write-Host -ForegroundColor Green "Received config from the server."
+Write-Host -ForegroundColor Green "Received configuration from the server."
 Write-Host -ForegroundColor DarkGreen $configResponse
 $config = ($configResponse | ConvertFrom-Json)
 
-Write-Host -ForegroundColor Yellow "Getting available updates. Computer may restart automatically."
+Write-Host -ForegroundColor Yellow "Starting update process. Computer may restart automatically."
 Write-Host -ForegroundColor Yellow "Configured autologon for user $($config.logon.continuity.username)"
-Configure-AutoLogon -Username config.logon.continuity.username -Passsword config.logon.continuity.password -Uses 1
+Configure-AutoLogon -Username $config.logon.continuity.username -Passsword $config.logon.continuity.password -Domain $config.logon.continuity.domain -Uses 1
+Write-Host -ForegroundColor Yellow "Checking Windows Update reboot status."
+
+# Check and reboot if a reboot is required, then install updates.
 RestartRequired-Checkpoint
-Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot
+Install-WindowsUpdate -AcceptAll -AutoReboot -Download -Install -Silent
 
-<# foreach ($update in $availableUpdates) {
-
-  # Make sure no restarts are pending
-  RestartRequired-Checkpoint
-
-  # Start processing update
-  Write-Host -ForegroundColor Cyan "Installing $(If ($update.KB -eq '') {"(NO KB)"} Else { $update.KB }) ($($update.Size)) $($update.Title)"
-
-  # Download
-  if ($update.IsDownloaded() -eq $true) {
-    Write-Host -ForegroundColor Yellow "   - Update has been previously downloaded. Continuing to installation."
-  } else {
-    Write-Host -ForegroundColor Yellow "   - Downloading update."
-    Get-WindowsUpdate -Download -MicrosoftUpdate -AcceptAll -UpdateID $update.Identity().UpdateID()
-    Write-Host -ForegroundColor DarkGreen "   - Downloading complete."
-  }
-
-  # Install
-  Write-Host -ForegroundColor Yellow "   - Installing update."
-  Get-WindowsUpdate -Install -MicrosoftUpdate -AcceptAll -UpdateID $update.Identity().UpdateID()
-  Write-Host -ForegroundColor DarkGreen "   - Installation complete."
-} #>
-
-Write-Host -ForegroundColor Green "Finished update installation."
+Write-Host -ForegroundColor Green "Finished this update installation session."
 
 RestartRequired-Checkpoint
 
 # Post Update Check
 Create-RegistryKeys
+Disable-AUP
 
-$postUpdateCheck = Get-ItemProperty -Path "HKLM:\SOFTWARE\larryr1\AutoUpdate\" -Name "PostUpdateCheck"
-if ($postUpdateCheck -eq "1") {
+$autoUpdateKey = Get-ItemProperty -Path $registryKeyPath
+
+if ($autoUpdateKey.PostUpdateCheck -eq "1") {
+  Enable-AUP
   Delete-RegistryKeys
-  Write-Host -ForegroundColor Green "Updates are complete. Restarting to log in to pre-configured completion account ($($config.logon.completion.username))."
-  Completion-Restart
+    
+  Write-Host -ForegroundColor Green "Updates are complete. Signing out."
+  Remove-AutoLogon
+  Set-WallpaperStatus
+  Log-Off
+  exit
+
 } else {
-  Set-ItemProperty -Path "HKLM:\SOFTWARE\larryr1\AutoUpdate\" -Name "PostUpdateCheck" -Value "1" -Force
-  Write-Host -ForegroundColor Green "Updates are almost complete. Restarting to check for any final updates. (Using account $($config.logon.continuity.username).)"
+  Set-ItemProperty -Path $registryKeyPath -Name "PostUpdateCheck" -Value "1" -Force
+  Write-Host -ForegroundColor Green "Restarting to check for any final updates. (Using continuity account $($config.logon.continuity.username))"
   Continuity-Restart
 }
 
