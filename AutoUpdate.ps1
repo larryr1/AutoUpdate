@@ -1,8 +1,13 @@
+# AutoUpdate.ps1
+# Larry Rowe - Somerset College Preparatory Academy
+
 #Requires -RunAsAdministrator
 
+# Known registry key paths
 $registryKeyPath = "HKLM:\SOFTWARE\larryr1\AutoUpdate\"
 $legalKeyPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
 
+# Require elevated privileges
 $isElevated = (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if ($isElevated -eq $false) {
   Write-Host -ForegroundColor Red "This script must be running with elevated privileges to continue."
@@ -12,7 +17,7 @@ if ($isElevated -eq $false) {
 }
 
 
-
+# Function to configure Winlogon Autologon registry keys with given parameters.
 function Configure-AutoLogon {
 
   Param([string]$Username, [string]$Password, [string]$Domain = "", [string]$Uses = 1)
@@ -27,6 +32,7 @@ function Configure-AutoLogon {
   
 }
 
+# Function to clear Winlogon Autologon registry keys.
 function Remove-AutoLogon {
   $RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
   Set-ItemProperty $RegistryPath 'AutoAdminLogon' -Value "0" -Type String -Force
@@ -37,15 +43,18 @@ function Remove-AutoLogon {
   Set-ItemProperty $RegistryPath 'LastUsedUsername' -Value "" -type String -Force
 }
 
+# Configures Autologon with continuity parameters to restart and continue.
 function Continuity-Restart {
   Configure-AutoLogon -Username $config.logon.continuity.username -Password $config.logon.continuity.password -Domain $config.logon.continuity.domain -Uses 1
   Restart-System
 }
 
+# Determines if Windows Update currently requires a machine restart.
 function Is-RestartRequired {
   return $(Get-WURebootStatus)[0].RebootRequired
 }
 
+# Restarts machine if required.
 function RestartRequired-Checkpoint {
   if ($(Is-RestartRequired) -eq $true) {
     Write-Host -ForegroundColor Yellow "The machine needs to restart before continuing. The macine will restart in 10 seconds."
@@ -55,14 +64,17 @@ function RestartRequired-Checkpoint {
   }
 }
 
+# Function to restart machine
 function Restart-System {
   Start-Process -FilePath "shutdown.exe" -ArgumentList '/r /f /t 10 /c "The system is restarting in 10 seconds for planned updates."'
 }
 
+# Function to log off current user.
 function Log-Off {
   Start-Process -FilePath "shutdown.exe" -ArgumentList '/f /l'
 }
 
+# Function to ensure the registry keys needed by the script exist.
 function Create-RegistryKeys {
   New-Item -Path $registryKeyPath -ErrorAction Ignore
   New-ItemProperty -Path $registryKeyPath -Name PostUpdateCheck -ErrorAction Ignore
@@ -71,12 +83,14 @@ function Create-RegistryKeys {
   New-ItemProperty -Path $registryKeyPath -Name LegalNoticeDisabled -ErrorAction Ignore
 }
 
+# Function to delete the script's registry keys.
 function Delete-RegistryKeys {
   if (Test-Path -Path $registryKeyPath) {
     Remove-Item -Path $registryKeyPath -Recurse
   }
 }
 
+# Function to disable the system's legal notice and store it to enable it later.
 function Disable-AUP {
     if ((Get-ItemProperty -Path $registryKeyPath -Name LegalNoticeDisabled -ErrorAction Stop).LegalNoticeDisabled -ne 1) {
 
@@ -97,6 +111,7 @@ function Disable-AUP {
     }
 }
 
+# Function to enable the system's legal notice which was stored with Disable-AUP.
 function Enable-AUP {
     if ((Get-ItemProperty -Path $registryKeyPath -Name LegalNoticeDisabled -ErrorAction Stop).LegalNoticeDisabled -eq "1") {
 
@@ -117,6 +132,7 @@ function Enable-AUP {
     }
 }
 
+# Generates and displays a lock screen wallpaper image to indicate the machine has finished updating
 function Set-WallpaperStatus {
   
   $videoSettings = (Get-WmiObject Win32_VideoController | Select CurrentHorizontalResolution, CurrentVerticalResolution)
@@ -154,14 +170,12 @@ function Set-WallpaperStatus {
   Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\Personalization\" -Name "LockScreenImage" -Value $filename
 }
 
+# Ensure dependencies are available.
 Write-Host Ensuring NuGet is up to date...
 Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-
 Write-Host Installing required modules...
-
 Write-Host Trusting repository PSGallery...
 Set-PSRepository PSGallery -InstallationPolicy Trusted
-
 Write-Host Installing module PSWindowsUpdate...
 Install-Module PSWindowsUpdate -Confirm:$False -Force
 
@@ -169,6 +183,7 @@ Write-Host Loading .NET assemblies System.Windows.Forms and System.Drawing...
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# Main begin.
 Clear-Host
 Write-Host "Automatic Windows Update"
 write-Host -ForegroundColor Cyan "This machine is $(((ipconfig) -match 'IPv4').split(':')[1].trim())."
