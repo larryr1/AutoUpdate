@@ -234,9 +234,6 @@ Write-Host -ForegroundColor Green "Received configuration from the server."
 Write-Host -ForegroundColor DarkGreen $configResponse
 $config = ($configResponse | ConvertFrom-Json)
 
-# Verify configuration is correct
-Verify-Configuration -Configuration $config
-
 Write-Host -ForegroundColor Yellow "Starting update process. Computer may restart automatically."
 Write-Host -ForegroundColor Yellow "Configured autologon for user $($config.logon.continuity.username)"
 Configure-AutoLogon -Username $config.logon.continuity.username -Passsword $config.logon.continuity.password -Domain $config.logon.continuity.domain -Uses 1
