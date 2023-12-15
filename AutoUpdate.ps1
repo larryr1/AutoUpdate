@@ -11,7 +11,14 @@ if ($isElevated -eq $false) {
   exit
 }
 
+# Attempt to set monitor to full brightness.
+try {
+  Get-WmiObject -namespace root/wmi -class WmiMonitorBrightnessMethods | foreach {
+      $_.wmisetbrightness(1,255)
+  }
+} catch {}
 
+# ALL FUNCTION DEFINITIONS
 
 function Configure-AutoLogon {
 
