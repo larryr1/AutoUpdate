@@ -15,11 +15,11 @@ if ($isElevated -eq $false) {
 
 function Configure-AutoLogon {
 
-  Param([string]$Username, [string]$Password, [string]$Domain = "", [string]$Uses = 1)
+  Param([string]$Username, [string]$Password, [string]$Domain = "", [int]$Uses = 1)
 
   $RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
-  Set-ItemProperty $RegistryPath 'AutoAdminLogon' -Value "1" -Type String -Force
-  Set-ItemProperty $RegistryPath 'AutoLogonCount' -Value $Uses -type String -Force
+  Set-ItemProperty $RegistryPath 'AutoAdminLogon' -Value "1" -Type DWord -Force
+  Set-ItemProperty $RegistryPath 'AutoLogonCount' -Value $Uses -type DWord -Force
   Set-ItemProperty $RegistryPath 'DefaultUsername' -Value "$Username" -type String -Force
   Set-ItemProperty $RegistryPath 'DefaultPassword' -Value "$Password" -type String -Force
   Set-ItemProperty $RegistryPath 'DefaultDomainName' -Value "$Domain" -type String -Force
@@ -29,8 +29,8 @@ function Configure-AutoLogon {
 
 function Remove-AutoLogon {
   $RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
-  Set-ItemProperty $RegistryPath 'AutoAdminLogon' -Value "0" -Type String -Force
-  Set-ItemProperty $RegistryPath 'AutoLogonCount' -Value "0" -type String -Force
+  Set-ItemProperty $RegistryPath 'AutoAdminLogon' -Value "0" -Type DWord -Force
+  Set-ItemProperty $RegistryPath 'AutoLogonCount' -Value "0" -type DWord -Force
   Set-ItemProperty $RegistryPath 'DefaultUsername' -Value "" -type String -Force
   Set-ItemProperty $RegistryPath 'DefaultPassword' -Value "" -type String -Force
   Set-ItemProperty $RegistryPath 'DefaultDomainName' -Value "" -type String -Force
