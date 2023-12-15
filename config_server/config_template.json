@@ -5,11 +5,13 @@
       "username": "user",
       "password": "password",
       "domain": "fqdn.local"
+      "useComputerNameAsDomain": false
     },
     "continuity": {
       "username": "user",
       "password": "password",
       "domain": "fqdn.local"
+      "useComputerNameAsDomain": false
     }
   }
 }
