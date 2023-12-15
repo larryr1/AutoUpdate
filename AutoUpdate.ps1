@@ -42,6 +42,11 @@ function Continuity-Restart {
   Restart-System
 }
 
+function Completion-Restart {
+  Configure-AutoLogon -Username $config.logon.completion.username -Password $config.logon.completion.password -Domain $config.logon.completion.domain -Uses 1
+  Restart-System
+}
+
 function Is-RestartRequired {
   return $(Get-WURebootStatus)[0].RebootRequired
 }
